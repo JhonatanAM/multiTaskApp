@@ -8,6 +8,11 @@ import threading
 import uuid
 from werkzeug.utils import secure_filename
 import functools
+import shutil
+import stat
+import tarfile
+import urllib.request
+import logging
 
 # Authentication for admin actions (upload/delete persistent cookies)
 API_KEY = os.environ.get('APP_API_KEY')
@@ -32,6 +37,61 @@ app = Flask(__name__)
 # Crear carpetas si no existen
 os.makedirs('mp3', exist_ok=True)
 os.makedirs('qrs', exist_ok=True)
+
+
+def ensure_ffmpeg():
+    """Ensure ffmpeg and ffprobe are available.
+    Returns a path to ffmpeg binaries directory (string) or None to use system ffmpeg.
+    """
+    # 1) system
+    if shutil.which('ffmpeg') and shutil.which('ffprobe'):
+        logging.info('ffmpeg found on PATH')
+        return None
+
+    # 2) env var
+    env_path = os.environ.get('FFMPEG_PATH')
+    if env_path:
+        ff = os.path.join(env_path, 'ffmpeg')
+        fp = os.path.join(env_path, 'ffprobe')
+        if os.path.exists(ff) and os.path.exists(fp):
+            logging.info('Using ffmpeg from FFMPEG_PATH')
+            return env_path
+
+    # 3) local bin
+    local_ff = os.path.join('bin', 'ffmpeg')
+    local_fp = os.path.join('bin', 'ffprobe')
+    if os.path.exists(local_ff) and os.path.exists(local_fp):
+        logging.info('Using local ./bin/ffmpeg')
+        return os.path.abspath('bin')
+
+    # 4) attempt download (best-effort for Linux x86_64)
+    try:
+        os.makedirs('bin', exist_ok=True)
+        url = 'https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz'
+        archive = os.path.join('bin', 'ffmpeg-static.tar.xz')
+        logging.info('Attempting to download ffmpeg static build...')
+        urllib.request.urlretrieve(url, archive)
+        with tarfile.open(archive, 'r:xz') as tf:
+            members = [m for m in tf.getmembers() if m.name.endswith('/ffmpeg') or m.name.endswith('/ffprobe')]
+            for m in members:
+                m.name = os.path.basename(m.name)
+                tf.extract(m, path='bin')
+
+        # make executables
+        for p in ('ffmpeg', 'ffprobe'):
+            path = os.path.join('bin', p)
+            if os.path.exists(path):
+                st = os.stat(path)
+                os.chmod(path, st.st_mode | stat.S_IEXEC)
+
+        if os.path.exists(local_ff) and os.path.exists(local_fp):
+            logging.info('ffmpeg downloaded to ./bin')
+            return os.path.abspath('bin')
+    except Exception as e:
+        logging.warning(f'Could not auto-install ffmpeg: {e}')
+
+    logging.error('ffmpeg not found')
+    return None
 
 @app.route('/')
 def index():
@@ -64,6 +124,9 @@ def descargar_mp3():
         outdir = 'mp3'
         os.makedirs(outdir, exist_ok=True)
 
+        # Ensure ffmpeg is available (system, env or downloaded into ./bin)
+        ffmpeg_dir = ensure_ffmpeg()
+
         ydl_opts = {
             'format': 'bestaudio/best',
             'postprocessors': [{
@@ -75,6 +138,11 @@ def descargar_mp3():
             'quiet': True,
             'no_warnings': True,
         }
+
+        # If ensure_ffmpeg returned a dir (not None), point yt-dlp to it
+        if ffmpeg_dir:
+            # yt-dlp option is 'ffmpeg_location' to point to ffmpeg binary directory
+            ydl_opts['ffmpeg_location'] = ffmpeg_dir
 
         # If a cookies file was uploaded, tell yt-dlp to use it
         if cookies_path:
