@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Downloader & QR Generator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            max-width: 600px;
+            width: 100%;
+            padding: 40px;
+        }
+        
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+            font-size: 28px;
+        }
+        
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+            border-bottom: 2px solid #eee;
+        }
+        
+        .tab-btn {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            background: none;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            color: #999;
+            transition: all 0.3s;
+            border-bottom: 3px solid transparent;
+            margin-bottom: -2px;
+        }
+        
+        .tab-btn.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+        }
+        
+        input[type="text"],
+        input[type="url"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #eee;
+            border-radius: 5px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        
+        input[type="text"]:focus,
+        input[type="url"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .btn {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+        
+        .message {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 5px;
+            display: none;
+        }
+        
+        .message.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+            display: block;
+        }
+        
+        .message.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            display: block;
+        }
+        
+        .message.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+            display: block;
+        }
+        
+        .download-link {
+            display: inline-block;
+            margin-top: 10px;
+            padding: 10px 20px;
+            background: #667eea;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: all 0.3s;
+        }
+        
+        .download-link:hover {
+            background: #764ba2;
+            text-decoration: none;
+        }
+        
+        .file-list {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f9f9f9;
+            border-radius: 5px;
+        }
+        
+        .file-list h3 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+        
+        .file-item {
+            padding: 8px;
+            background: white;
+            margin-bottom: 8px;
+            border-radius: 3px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-left: 4px solid #667eea;
+        }
+        
+        .file-item a {
+            color: #667eea;
+            text-decoration: none;
+            font-size: 14px;
+        }
+        
+        .file-item a:hover {
+            text-decoration: underline;
+        }
+        
+        .loading {
+            display: none;
+            text-align: center;
+            margin-top: 20px;
+        }
+        
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎵 YouTube Downloader & QR 📱</h1>
+        
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('mp3')">📥 Descargar MP3</button>
+            <button class="tab-btn" onclick="switchTab('qr')">📱 Generar QR</button>
+        </div>
+        
+        <!-- Tab MP3 -->
+        <div id="mp3" class="tab-content active">
+            <div class="form-group">
+                <label for="url-mp3">URL de YouTube:</label>
+                <input type="url" id="url-mp3" placeholder="https://www.youtube.com/watch?v=...">
+            </div>
+            <button class="btn btn-primary" onclick="descargarMP3()">Descargar MP3</button>
+            <div class="loading" id="loading-mp3">
+                <div class="spinner"></div>
+                <p>Descargando...</p>
+            </div>
+            <div class="message" id="message-mp3"></div>
+            <div class="file-list" id="file-list-mp3" style="display: none;">
+                <h3>📁 MP3 Descargados:</h3>
+                <div id="mp3-files"></div>
+            </div>
+        </div>
+        
+        <!-- Tab QR -->
+        <div id="qr" class="tab-content">
+            <div class="form-group">
+                <label for="url-qr">URL a codificar:</label>
+                <input type="url" id="url-qr" placeholder="https://ejemplo.com">
+            </div>
+            <div class="form-group">
+                <label for="name-qr">Nombre del QR:</label>
+                <input type="text" id="name-qr" placeholder="mi-qr">
+            </div>
+            <button class="btn btn-primary" onclick="generarQR()">Generar y Descargar QR</button>
+            <div class="loading" id="loading-qr">
+                <div class="spinner"></div>
+                <p>Generando...</p>
+            </div>
+            <div class="message" id="message-qr"></div>
+            <div class="file-list" id="file-list-qr" style="display: none;">
+                <h3>📁 QR Generados:</h3>
+                <div id="qr-files"></div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        function switchTab(tab) {
+            // Ocultar todos
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+            
+            // Mostrar seleccionado
+            document.getElementById(tab).classList.add('active');
+            event.target.classList.add('active');
+            
+            // Cargar archivos
+            if (tab === 'mp3') cargarListaMP3();
+            if (tab === 'qr') cargarListaQR();
+        }
+        
+        function showMessage(elementId, message, type) {
+            const el = document.getElementById(elementId);
+            el.textContent = message;
+            el.className = `message ${type}`;
+        }
+        
+        function descargarMP3() {
+            const url = document.getElementById('url-mp3').value;
+            if (!url) {
+                showMessage('message-mp3', 'Por favor ingresa una URL', 'error');
+                return;
+            }
+            
+            document.getElementById('loading-mp3').style.display = 'block';
+            document.getElementById('message-mp3').style.display = 'none';
+            
+            fetch('/descargar-mp3', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({url: url})
+            })
+            .then(r => r.json())
+            .then(data => {
+                document.getElementById('loading-mp3').style.display = 'none';
+                if (data.error) {
+                    showMessage('message-mp3', `❌ Error: ${data.error}`, 'error');
+                } else {
+                    showMessage('message-mp3', `✅ ${data.mensaje}. Archivo: ${data.archivo}`, 'success');
+                    document.getElementById('url-mp3').value = '';
+                    cargarListaMP3();
+                }
+            })
+            .catch(e => {
+                document.getElementById('loading-mp3').style.display = 'none';
+                showMessage('message-mp3', `❌ Error: ${e.message}`, 'error');
+            });
+        }
+        
+        function generarQR() {
+            const url = document.getElementById('url-qr').value;
+            const name = document.getElementById('name-qr').value;
+            
+            if (!url || !name) {
+                showMessage('message-qr', 'Por favor completa todos los campos', 'error');
+                return;
+            }
+            
+            document.getElementById('loading-qr').style.display = 'block';
+            document.getElementById('message-qr').style.display = 'none';
+            
+            fetch('/generar-qr', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({url: url, name: name})
+            })
+            .then(r => r.blob())
+            .then(blob => {
+                document.getElementById('loading-qr').style.display = 'none';
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = `${name}.png`;
+                link.click();
+                showMessage('message-qr', `✅ QR descargado: ${name}.png`, 'success');
+                document.getElementById('url-qr').value = '';
+                document.getElementById('name-qr').value = '';
+                cargarListaQR();
+            })
+            .catch(e => {
+                document.getElementById('loading-qr').style.display = 'none';
+                showMessage('message-qr', `❌ Error: ${e.message}`, 'error');
+            });
+        }
+        
+        function cargarListaMP3() {
+            fetch('/listar-mp3')
+                .then(r => r.json())
+                .then(data => {
+                    const container = document.getElementById('mp3-files');
+                    if (data.archivos.length > 0) {
+                        container.innerHTML = data.archivos.map(f => `
+                            <div class="file-item">
+                                <span>${f}</span>
+                                <a href="/descargar-mp3-archivo/${f}" download>Descargar</a>
+                            </div>
+                        `).join('');
+                        document.getElementById('file-list-mp3').style.display = 'block';
+                    } else {
+                        document.getElementById('file-list-mp3').style.display = 'none';
+                    }
+                });
+        }
+        
+        function cargarListaQR() {
+            fetch('/listar-qr')
+                .then(r => r.json())
+                .then(data => {
+                    const container = document.getElementById('qr-files');
+                    if (data.archivos.length > 0) {
+                        container.innerHTML = data.archivos.map(f => `
+                            <div class="file-item">
+                                <span>${f}</span>
+                                <a href="/descargar-qr-archivo/${f.replace('.png', '')}" download>Descargar</a>
+                            </div>
+                        `).join('');
+                        document.getElementById('file-list-qr').style.display = 'block';
+                    } else {
+                        document.getElementById('file-list-qr').style.display = 'none';
+                    }
+                });
+        }
+    </script>
+</body>
+</html>

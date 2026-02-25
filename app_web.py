@@ -1,0 +1,123 @@
+from flask import Flask, render_template, request, send_file, jsonify
+import os
+import yt_dlp
+import qrcode
+from io import BytesIO
+from pathlib import Path
+import threading
+
+app = Flask(__name__)
+
+# Crear carpetas si no existen
+os.makedirs('mp3', exist_ok=True)
+os.makedirs('qrs', exist_ok=True)
+
+@app.route('/')
+def index():
+    """Página principal"""
+    return render_template('index.html')
+
+@app.route('/descargar-mp3', methods=['POST'])
+def descargar_mp3():
+    """Endpoint para descargar MP3"""
+    try:
+        url = request.json.get('url')
+        if not url:
+            return jsonify({'error': 'URL no proporcionada'}), 400
+        
+        outdir = 'mp3'
+        os.makedirs(outdir, exist_ok=True)
+        
+        ydl_opts = {
+            'format': 'bestaudio/best',
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }],
+            'outtmpl': os.path.join(outdir, '%(title)s.%(ext)s'),
+            'quiet': True,
+            'no_warnings': True,
+        }
+        
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            filename = ydl.prepare_filename(info)
+            # Cambiar extensión a .mp3
+            mp3_filename = os.path.splitext(filename)[0] + '.mp3'
+            
+        return jsonify({'success': True, 'mensaje': 'MP3 descargado', 'archivo': os.path.basename(mp3_filename)})
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/generar-qr', methods=['POST'])
+def generar_qr():
+    """Endpoint para generar QR y descargar"""
+    try:
+        data = request.json
+        url = data.get('url')
+        name = data.get('name', 'qr')
+        
+        if not url:
+            return jsonify({'error': 'URL no proporcionada'}), 400
+        
+        # Generar QR en memoria
+        qr = qrcode.make(url)
+        img_io = BytesIO()
+        qr.save(img_io, 'PNG')
+        img_io.seek(0)
+        
+        # También guardar en servidor
+        outdir = 'qrs'
+        os.makedirs(outdir, exist_ok=True)
+        qr.save(os.path.join(outdir, f"{name}.png"))
+        
+        return send_file(img_io, mimetype='image/png', as_attachment=True, download_name=f'{name}.png')
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/descargar-qr-archivo/<name>')
+def descargar_qr_archivo(name):
+    """Descarga QR generado previamente"""
+    try:
+        filepath = os.path.join('qrs', f"{name}.png")
+        if os.path.exists(filepath):
+            return send_file(filepath, mimetype='image/png', as_attachment=True, download_name=f'{name}.png')
+        return jsonify({'error': 'Archivo no encontrado'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/descargar-mp3-archivo/<filename>')
+def descargar_mp3_archivo(filename):
+    """Descarga MP3 generado previamente"""
+    try:
+        filepath = os.path.join('mp3', filename)
+        if os.path.exists(filepath):
+            return send_file(filepath, mimetype='audio/mpeg', as_attachment=True, download_name=filename)
+        return jsonify({'error': 'Archivo no encontrado'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/listar-mp3')
+def listar_mp3():
+    """Lista los MP3 descargados"""
+    try:
+        archivos = os.listdir('mp3') if os.path.exists('mp3') else []
+        return jsonify({'archivos': archivos})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/listar-qr')
+def listar_qr():
+    """Lista los QR generados"""
+    try:
+        archivos = os.listdir('qrs') if os.path.exists('qrs') else []
+        return jsonify({'archivos': archivos})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5000))
+    app.run(debug=False, host='0.0.0.0', port=port)
