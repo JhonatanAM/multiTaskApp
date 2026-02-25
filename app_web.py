@@ -7,6 +7,25 @@ from pathlib import Path
 import threading
 import uuid
 from werkzeug.utils import secure_filename
+import functools
+
+# Authentication for admin actions (upload/delete persistent cookies)
+API_KEY = os.environ.get('APP_API_KEY')
+
+def require_api_key(fn):
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        if not API_KEY:
+            # If no API key set, allow (developer convenience)
+            return fn(*args, **kwargs)
+        auth = request.headers.get('Authorization', '')
+        if not auth.startswith('Bearer '):
+            return jsonify({'error': 'Unauthorized'}), 401
+        token = auth.split(' ', 1)[1]
+        if token != API_KEY:
+            return jsonify({'error': 'Unauthorized'}), 401
+        return fn(*args, **kwargs)
+    return wrapper
 
 app = Flask(__name__)
 
@@ -60,6 +79,17 @@ def descargar_mp3():
         # If a cookies file was uploaded, tell yt-dlp to use it
         if cookies_path:
             ydl_opts['cookiefile'] = cookies_path
+        else:
+            # If there is a persistent cookies file uploaded by admin, use it
+            persistent = None
+            cookies_dir = 'cookies'
+            if os.path.exists(cookies_dir):
+                for f in os.listdir(cookies_dir):
+                    if f.startswith('persistent_'):
+                        persistent = os.path.join(cookies_dir, f)
+                        break
+            if persistent:
+                ydl_opts['cookiefile'] = persistent
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
@@ -103,6 +133,43 @@ def generar_qr():
         
         return send_file(img_io, mimetype='image/png', as_attachment=True, download_name=f'{name}.png')
     
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/admin/upload-cookies', methods=['POST'])
+@require_api_key
+def admin_upload_cookies():
+    """Upload a persistent cookies.txt (admin only)."""
+    try:
+        cookies_file = request.files.get('cookies')
+        if not cookies_file:
+            return jsonify({'error': 'No file provided'}), 400
+        cookies_dir = 'cookies'
+        os.makedirs(cookies_dir, exist_ok=True)
+        filename = secure_filename(cookies_file.filename) or 'cookies.txt'
+        dest = os.path.join(cookies_dir, 'persistent_' + filename)
+        cookies_file.save(dest)
+        return jsonify({'success': True, 'path': dest})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/admin/delete-cookies', methods=['POST'])
+@require_api_key
+def admin_delete_cookies():
+    """Delete the persistent cookies file (admin only)."""
+    try:
+        cookies_dir = 'cookies'
+        if not os.path.exists(cookies_dir):
+            return jsonify({'success': True, 'deleted': False, 'reason': 'no cookies directory'})
+        deleted = []
+        for f in os.listdir(cookies_dir):
+            if f.startswith('persistent_'):
+                path = os.path.join(cookies_dir, f)
+                os.remove(path)
+                deleted.append(f)
+        return jsonify({'success': True, 'deleted': deleted})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
