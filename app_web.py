@@ -5,6 +5,8 @@ import qrcode
 from io import BytesIO
 from pathlib import Path
 import threading
+import uuid
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 
@@ -21,13 +23,28 @@ def index():
 def descargar_mp3():
     """Endpoint para descargar MP3"""
     try:
-        url = request.json.get('url')
+        # Accept either JSON (no cookies) or multipart/form-data with an optional cookies file
+        url = None
+        cookies_path = None
+        if request.is_json:
+            url = request.json.get('url')
+        else:
+            # form-data: url in form, optional file in 'cookies'
+            url = request.form.get('url')
+            cookies_file = request.files.get('cookies')
+            if cookies_file:
+                cookies_dir = 'cookies'
+                os.makedirs(cookies_dir, exist_ok=True)
+                filename = secure_filename(cookies_file.filename) or f"cookies_{uuid.uuid4().hex}.txt"
+                cookies_path = os.path.join(cookies_dir, f"{uuid.uuid4().hex}_{filename}")
+                cookies_file.save(cookies_path)
+
         if not url:
             return jsonify({'error': 'URL no proporcionada'}), 400
-        
+
         outdir = 'mp3'
         os.makedirs(outdir, exist_ok=True)
-        
+
         ydl_opts = {
             'format': 'bestaudio/best',
             'postprocessors': [{
@@ -39,13 +56,24 @@ def descargar_mp3():
             'quiet': True,
             'no_warnings': True,
         }
-        
+
+        # If a cookies file was uploaded, tell yt-dlp to use it
+        if cookies_path:
+            ydl_opts['cookiefile'] = cookies_path
+
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             filename = ydl.prepare_filename(info)
             # Cambiar extensión a .mp3
             mp3_filename = os.path.splitext(filename)[0] + '.mp3'
-            
+
+        # Clean up temporary cookies file
+        try:
+            if cookies_path and os.path.exists(cookies_path):
+                os.remove(cookies_path)
+        except Exception:
+            pass
+
         return jsonify({'success': True, 'mensaje': 'MP3 descargado', 'archivo': os.path.basename(mp3_filename)})
     
     except Exception as e:

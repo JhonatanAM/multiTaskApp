@@ -238,6 +238,11 @@
                 <label for="url-mp3">URL de YouTube:</label>
                 <input type="url" id="url-mp3" placeholder="https://www.youtube.com/watch?v=...">
             </div>
+            <div class="form-group">
+                <label for="cookies-file">(Opcional) Archivo cookies.txt de YouTube:</label>
+                <input type="file" id="cookies-file" accept=".txt">
+                <small style="color:#666; display:block; margin-top:6px;">Si YouTube pide verificación o login, exporta tus cookies (formato cookies.txt) desde tu navegador y súbelas aquí.</small>
+            </div>
             <button class="btn btn-primary" onclick="descargarMP3()">Descargar MP3</button>
             <div class="loading" id="loading-mp3">
                 <div class="spinner"></div>
@@ -304,6 +309,31 @@
             document.getElementById('loading-mp3').style.display = 'block';
             document.getElementById('message-mp3').style.display = 'none';
             
+            const file = document.getElementById('cookies-file').files[0];
+            if (file) {
+                const fd = new FormData();
+                fd.append('url', url);
+                fd.append('cookies', file);
+                fetch('/descargar-mp3', { method: 'POST', body: fd })
+                .then(r => r.json())
+                .then(data => {
+                    document.getElementById('loading-mp3').style.display = 'none';
+                    if (data.error) {
+                        showMessage('message-mp3', `❌ Error: ${data.error}`, 'error');
+                    } else {
+                        showMessage('message-mp3', `✅ ${data.mensaje}. Archivo: ${data.archivo}`, 'success');
+                        document.getElementById('url-mp3').value = '';
+                        document.getElementById('cookies-file').value = null;
+                        cargarListaMP3();
+                    }
+                })
+                .catch(e => {
+                    document.getElementById('loading-mp3').style.display = 'none';
+                    showMessage('message-mp3', `❌ Error: ${e.message}`, 'error');
+                });
+                return;
+            }
+
             fetch('/descargar-mp3', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
